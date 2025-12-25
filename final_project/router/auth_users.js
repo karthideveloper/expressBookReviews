@@ -1,80 +1,75 @@
 const express = require("express");
 const jwt = require("jsonwebtoken");
-let books = require("./booksdb.js");
-const regd_users = express.Router();
+const books = require("../data/booksdb.json");
 
-let users = [];
+const router = express.Router();
+const users = [];
 
-const isValid = (username) => {
-  let validUser = users.filter((user) => user.username === username);
-  return validUser.length > 0;
-};
-
-const authenticatedUser = (username, password) => {
-  let validUser = users.filter(
-    (user) => user.username === username && user.password === password
-  );
-  return validUser.length > 0;
-};
-
-//only registered users can login
-regd_users.post("/login", (req, res) => {
+/* TASK 7 – Register */
+router.post("/register", (req, res) => {
   const { username, password } = req.body;
-  if (!username || !password)
-    return res.status(404).json({ message: "Error logging in" });
-  if (authenticatedUser(username, password)) {
-    let accessToken = jwt.sign(
-      {
-        data: password,
-      },
-      "access",
-      { expiresIn: 60 }
-    );
 
-    req.session.authorization = { accessToken, username };
-    return res.status(200).json({ message: "user Successfully Logged in" });
-  } else {
-    return res.status(300).json({ message: "Yet to be implemented" });
+  if (users.find((u) => u.username === username)) {
+    return res.json({ message: "User already exists" });
   }
+
+  users.push({ username, password });
+  res.json({ message: "User successfully registered" });
 });
 
-// Add a book review
-regd_users.put("/auth/review/:isbn", (req, res) => {
-  const { isbn } = req.params;
-  const { review } = req.query;
-  const { username } = req.session.authorization;
-  if (!review) {
-    return res.status(400).json({ error: "Review cannot be empty." });
-  }
-  if (!books.hasOwnProperty(isbn)) {
-    return res.status(404).json({ error: "Book with given ISBN not found." });
-  }
-  books[isbn].reviews[username] = review;
+/* TASK 8 – Login */
+router.post("/login", (req, res) => {
+  const { username, password } = req.body;
 
-  return res.status(200).json({
-    message: "Review posted successfully.",
-    reviews: books[isbn].reviews,
+  const user = users.find(
+    (u) => u.username === username && u.password === password
+  );
+
+  if (!user) {
+    return res.status(401).json({ message: "Invalid credentials" });
+  }
+
+  const token = jwt.sign({ username }, "secretkey", { expiresIn: "1h" });
+
+  res.json({ message: "Login successful", token });
+});
+
+/* Middleware */
+function authenticate(req, res, next) {
+  const authHeader = req.headers.authorization;
+
+  if (!authHeader) return res.sendStatus(401);
+
+  const token = authHeader.split(" ")[1];
+
+  jwt.verify(token, "secretkey", (err, user) => {
+    if (err) return res.sendStatus(403);
+    req.user = user;
+    next();
+  });
+}
+
+/* TASK 9 – Add / Modify Review */
+router.put("/review/:isbn", authenticate, (req, res) => {
+  const isbn = req.params.isbn;
+  const review = req.body.review;
+
+  books[isbn].reviews[req.user.username] = review;
+
+  res.json({
+    message: "Review added/updated successfully",
+    reviews: books[isbn].reviews
   });
 });
 
-regd_users.delete("/auth/review/:isbn", (req, res) => {
-  const { isbn } = req.params;
-  const { username } = req.session.authorization;
-  if (!books.hasOwnProperty(isbn)) {
-    return res.status(404).json({ error: "Book with given ISBN not found." });
-  }
+/* TASK 10 – Delete Review */
+router.delete("/review/:isbn", authenticate, (req, res) => {
+  const isbn = req.params.isbn;
 
-  if (!books[isbn].reviews.hasOwnProperty(username))
-    return res.status(400).json({ error: "No review for this book" });
+  delete books[isbn].reviews[req.user.username];
 
-  delete books[isbn].reviews[username];
-
-  return res.status(200).json({
-    message: "Review posted successfully.",
-    reviews: books[isbn].reviews,
-  });
+  res.json({ message: "Review deleted successfully" });
 });
 
-module.exports.authenticated = regd_users;
-module.exports.isValid = isValid;
-module.exports.users = users;
+module.exports = router;
+
