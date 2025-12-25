@@ -95,6 +95,45 @@ router.get("/books/review/:isbn", (req, res) => {
   book ? res.json(book.reviews) : res.status(404).json({ message: "Book not found" });
 });
 
+function authenticate(req, res, next) {
+  console.log("Auth Header:", req.headers.authorization);
+
+  const authHeader = req.headers.authorization;
+  if (!authHeader) return res.sendStatus(401);
+
+  const token = authHeader.split(" ")[1];
+  console.log("Token:", token);
+
+  jwt.verify(token, "secretkey", (err, user) => {
+    if (err) {
+      console.log("JWT Error:", err.message);
+      return res.sendStatus(403);
+    }
+    req.user = user;
+    next();
+  });
+}
+/* TASK 9 – Add / Modify Review */
+router.put("/review/:isbn", (req, res) => {
+  const isbn = req.params.isbn;
+  const review = req.body.review;
+  console.log(req)
+  books[isbn].reviews['karthi'] = review;
+
+  res.json({
+    message: "Review added/updated successfully",
+    reviews: books[isbn].reviews
+  });
+});
+
+/* TASK 10 – Delete Review */
+router.delete("/review/:isbn", (req, res) => {
+  const isbn = req.params.isbn;
+
+  delete books[isbn].reviews['karthi'];
+
+  res.json({ message: "Review deleted successfully" });
+});
 /* Task 6 – Register user */
 router.post("/register", (req, res) => {
   const { username, password } = req.body;
